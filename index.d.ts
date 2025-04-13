@@ -1,0 +1,1 @@
+declare global{namespace NodeJS{interface Process{libc?:"glibc"|"musl"}}}export{}

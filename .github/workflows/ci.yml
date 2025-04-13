@@ -1,0 +1,88 @@
+name: CI
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+on:
+    push:
+        branches: ["main"]
+        tags: ["[0-9]+.[0-9]+.[0-9]+-?*"]
+    pull_request:
+        branches: ["main"]
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    test:
+        runs-on: ${{ matrix.os }}
+        container: ${{ matrix.container }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: macos-latest
+                      answer: undefined
+                    - os: ubuntu-latest
+                      answer: glibc
+                    - os: ubuntu-24.04-arm
+                      answer: glibc
+                    - os: ubuntu-latest
+                      answer: musl
+                      container: node:lts-alpine
+                    - os: windows-latest
+                      answer: undefined
+        steps:
+            - uses: actions/checkout@v4
+            - run: npm ci
+            - run: ./test.sh "${{ matrix.answer }}"
+
+    publish:
+        if: startsWith(github.ref, 'refs/tags/')
+        needs: test
+        runs-on: ubuntu-latest
+        permissions:
+            attestations: write
+            contents: write
+            id-token: write
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  fetch-tags: true
+            - name: Publish to github.com (Packaging)
+              id: github-pack
+              run: |
+                  mkdir -p dist/
+                  npm pack --pack-destination dist/
+
+                  LAST_TAG="$(git describe --tags --abbrev=0 HEAD~ || git rev-list --max-parents=0 HEAD)"
+                  HEAD_TAG="${{ github.ref_name }}"
+                  GITHUB_REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+                  CHANGELOG="$GITHUB_REPO_URL/compare/$LAST_TAG...$HEAD_TAG"
+                  CONTRIBUTORS="$(git log --pretty=format:'  + @%an' "$LAST_TAG".."$HEAD_TAG" | sort -u)"
+
+                  echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+                  echo "contributors=$CONTRIBUTORS" >> $GITHUB_OUTPUT
+            - name: Publish to github.com (Attestation)
+              id: github-attest
+              uses: actions/attest-build-provenance@v2
+              with:
+                  subject-path: dist/*
+            - name: Publish to github.com
+              uses: softprops/action-gh-release@v2
+              with:
+                  body: |
+                      - [**Changelog**](${{ steps.github-pack.outputs.changelog }})
+                      - [**Attestation**](${{ steps.github-attest.outputs.attestation-url }})
+                      - **Contributors**
+                      ${{ steps.github-pack.outputs.contributors }}
+                  files: dist/*
+            - name: Publish to npmjs.com
+              run: |
+                  npm set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+                  for pkg in dist/*; do npm publish "./$pkg"; done
+                  npm set //registry.npmjs.org/:_authToken
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
