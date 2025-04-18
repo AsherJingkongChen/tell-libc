@@ -1,1 +1,1 @@
-{"bin":"index.js","description":"Detect libc (glibc/musl) for Node.js","keywords":["glibc","libc","musl"],"license":"UNLICENSED","name":"tell-libc","repository":"https://github.com/AsherJingkongChen/tell-libc","version":"0.0.0"}
+{"bin":"index.js","description":"Detect libc (glibc/musl) for Node.js","keywords":["glibc","libc","musl"],"license":"ISC","name":"tell-libc","repository":"https://github.com/AsherJingkongChen/tell-libc","version":"0.0.1"}
